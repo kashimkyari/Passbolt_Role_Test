@@ -1,0 +1,88 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+
+- name: Install required packages
+  apt:
+    name:
+      - software-properties-common
+      - gnupg
+      - nginx
+      - mariadb-server
+      - php
+      - php-fpm
+      - php-mysql
+      - php-gnupg
+      - php7.4-common
+      - php7.4-cli
+      - php7.4-curl
+      - php7.4-gd
+      - php7.4-intl
+      - php7.4-mbstring
+      - php7.4-zip
+      - php7.4-xml
+      - unzip
+    state: present
+
+- name: Add Passbolt repository key
+  apt_key:
+    url: "https://download.passbolt.com/ce/ubuntu/passbolt-repo-key.asc"
+    state: present
+
+- name: Add Passbolt repository
+  apt_repository:
+    repo: 'deb https://download.passbolt.com/ce/ubuntu focal stable'
+    state: present
+
+- name: Install passbolt-ce-server
+  apt:
+    name: passbolt-ce-server
+    state: present
+    update_cache: yes
+
+- name: Configure Nginx
+  template:
+    src: passbolt.nginx.conf.j2
+    dest: /etc/nginx/sites-available/passbolt
+  notify: Restart Nginx
+
+- name: Enable Passbolt site
+  file:
+    src: /etc/nginx/sites-available/passbolt
+    dest: /etc/nginx/sites-enabled/passbolt
+    state: link
+  notify: Restart Nginx
+
+- name: Disable default Nginx site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Restart Nginx
+
+- name: Setup MySQL database
+  mysql_db:
+    name: "{{ passbolt_db_name }}"
+    state: present
+
+- name: Setup MySQL user
+  mysql_user:
+    name: "{{ passbolt_db_user }}"
+    password: "{{ passbolt_db_password }}"
+    priv: "{{ passbolt_db_name }}.*:ALL"
+    state: present
+
+- name: Configure Passbolt environment
+  template:
+    src: env.j2
+    dest: /var/www/passbolt/config/.env
+
+- name: Generate Passbolt GPG key
+  command: passbolt gpg generate
+  args:
+    chdir: /var/www/passbolt
+
+- name: Install and configure Passbolt
+  command: passbolt install --no-interaction
+  args:
+    chdir: /var/www/passbolt
